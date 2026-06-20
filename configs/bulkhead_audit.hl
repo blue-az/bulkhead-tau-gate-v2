@@ -1,0 +1,40 @@
+/* 
+   Project Phoenix: High-Integrity Vision Bulkhead 
+   Goal: Reject stochastic vision matches that drift > 50ms from IMU peaks.
+*/
+
+// 1. Load Input Arguments (The vision candidate)
+.candidate
+   vision_ts:x:@.arguments/*/vision_ts
+   similarity:x:@.arguments/*/similarity
+   data_path:x:@.arguments/*/data_path
+
+// 2. Fire the "Deterministic Oracle" Signal
+// This calls the Python 'imu.peak_audit' Slot
+signal:imu.peak_audit
+   raw_data_path:x:@.candidate/*/data_path
+   target_ts:x:@.candidate/*/vision_ts
+   return-to: .imu_truth
+
+// 3. THE BULKHEAD (The Veto Power)
+if
+   or
+      .not-exists:x:@.imu_truth/*/peak_ts
+      math.gt
+         math.abs
+            -:[@.candidate/*/vision_ts]
+            -:[@.imu_truth/*/peak_ts]
+         .0.05 // 50ms Veto Threshold
+then
+   // VETO: Reject the result
+   return
+      verified:false
+      reason:stochastic_leakage
+      drift_ms:x:[math.multiply:[math.abs:[ -:[@.candidate/*/vision_ts] -:[@.imu_truth/*/peak_ts] ]] 1000]
+else
+   // APPROVE: Verified physical alignment
+   return
+      verified:true
+      reason:physical_alignment_confirmed
+      peak_ts:x:@.imu_truth/*/peak_ts
+      confidence:x:@.candidate/*/similarity

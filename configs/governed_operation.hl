@@ -1,0 +1,49 @@
+/* 
+   DEFINITIVE Governed Operation: The High-Integrity Sandwich
+   
+   Upper Boundary (Charter): pbc-spec
+   Middle Substrate (Engine Room): Bulkhead τ / Project Phoenix
+   Lower Boundary (Logbook): groundtruth-kb
+*/
+
+// 1. CONSULT THE CHARTER (pbc-spec)
+// "What is the authorized behavior for this operation?"
+signal:pbc.read_contract
+   contract:"docs/behaviors/alignment.pbc.md"
+   return-to: .charter_policy
+
+// 2. TRIGGER THE ENGINE ROOM (Bulkhead τ)
+// "Execute the deterministic function within the substrate"
+if
+   eq:x:@.charter_policy/*/status
+      .:string:authorized
+then
+   // Call the Phoenix Substrate tool (The "Ref" ensures no model hallucination)
+   signal:imu.peak_audit
+      data_path:x:@.arguments/*/path
+      return-to: .engine_result
+
+   // 3. RECONCILE WITH THE CHARTER
+   // Does the Engine Room output violate the Charter's constraints?
+   if
+      math.gt
+         math.abs
+            -:[@.engine_result/*/peak_ts]
+            -:[@.charter_policy/*/allowed_drift]
+         .0.05
+   then
+      // 4. RECORD TO THE LOGBOOK (groundtruth-kb)
+      // "Record the violation: Drift detected between Engine and Charter"
+      signal:gt.record_evidence
+         claim_id:x:@.arguments/*/claim_id
+         verdict:violation
+         reason:stochastic_drift
+         evidence:x:@.engine_result/*/raw_trace
+         trust_state:quarantined
+   else
+      // RECORD SUCCESS TO THE LOGBOOK
+      signal:gt.record_evidence
+         claim_id:x:@.arguments/*/claim_id
+         verdict:verified
+         evidence:x:@.engine_result/*/peak_ts
+         trust_state:trusted

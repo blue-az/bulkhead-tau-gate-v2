@@ -1,0 +1,5 @@
+# Production dependencies (pure Python standard library used by the gate)
+# None
+
+# Development dependencies
+pytest>=8.0.0

@@ -1,0 +1,46 @@
+# Policy configuration for Bulkhead Tau Gate
+# Format: Hyperlambda-inspired key-value tree
+
+allowed_tools
+   .: run_command
+   .: write_file
+   .: replace
+   .: write_to_file
+   .: pytest
+   .: git
+   .: read_file
+
+command_permissions
+   deny
+      .: rm -rf
+      .: sudo
+      .: curl
+   allow
+      .: git status
+      .: git log
+      .: git diff
+      .: pytest
+      .: uv run pytest
+
+write_permissions
+   deny_paths
+      .: magic/plugins/
+      .: .git/
+   allow_paths
+      .: signals/
+      .: configs/
+      .: tests/
+      .: pyproject.toml
+      .: requirements.txt
+      .: README.md
+      .: harness_specification.md
+
+read_permissions
+   deny_paths
+      .: .git/config
+      .: .env
+   allow_paths
+      .: ./
+
+post_write_validators
+   .: validate_payload.py
