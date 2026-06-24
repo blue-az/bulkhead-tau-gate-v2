@@ -95,6 +95,18 @@ def main():
                         sys.stderr.write(f"Edit simulation error: {str(edit_err)}\n")
                         sys.exit(2)
         
+        elif tool_name == "MultiEdit":
+            path = tool_input.get("file_path", "")
+            allowed, msg = engine.check_action("replace", path)
+            if not allowed:
+                decision = {"decision": "deny", "reason": msg}
+
+        elif tool_name == "NotebookEdit":
+            path = tool_input.get("notebook_path", "")
+            allowed, msg = engine.check_action("write_file", path)
+            if not allowed:
+                decision = {"decision": "deny", "reason": msg}
+
         elif tool_name == "Read":
             path = tool_input.get("file_path", "")
             allowed, msg = engine.check_action("read_file", path)
@@ -113,6 +125,7 @@ def run_validators(engine, target_path, project_dir):
         # Resolve validator path relative to project_dir
         val_path = os.path.join(project_dir, validator)
         if not os.path.exists(val_path):
+            sys.stderr.write(f"WARNING: configured validator not found, not run: {validator}\n")
             continue
         try:
             # Explicitly use sys.executable for .py files
