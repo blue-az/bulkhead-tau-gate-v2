@@ -91,21 +91,59 @@ def main():
                             if os.path.exists(temp_file):
                                 os.remove(temp_file)
                     except Exception as edit_err:
-                        # Fail-closed on simulation error
-                        sys.stderr.write(f"Edit simulation error: {str(edit_err)}\n")
-                        sys.exit(2)
+                        # Fail-closed on simulation error — clean veto, don't take down the hook
+                        decision = {"decision": "deny", "reason": f"Edit simulation error (fail-closed): {edit_err}"}
         
         elif tool_name == "MultiEdit":
             path = tool_input.get("file_path", "")
             allowed, msg = engine.check_action("replace", path)
             if not allowed:
                 decision = {"decision": "deny", "reason": msg}
+            else:
+                # Predictive validation: apply all edits in sequence, then validate (same path as Edit)
+                full_path = os.path.join(project_dir, path)
+                if os.path.exists(full_path):
+                    temp_file = os.path.join(project_dir, f".claude_multiedit_temp_{os.path.basename(path)}.json")
+                    try:
+                        with open(full_path, "r") as f:
+                            simulated_content = f.read()
+                        for ed in tool_input.get("edits", []):
+                            o, n = ed.get("old_string", ""), ed.get("new_string", "")
+                            if o and o in simulated_content:
+                                simulated_content = simulated_content.replace(o, n, 1)
+                        with open(temp_file, "w") as f:
+                            f.write(simulated_content)
+                        valid, val_msg = run_validators(engine, temp_file, project_dir)
+                        if not valid:
+                            decision = {"decision": "deny", "reason": f"Validator Failure on MultiEdit: {val_msg}"}
+                    except Exception as me_err:
+                        decision = {"decision": "deny", "reason": f"MultiEdit simulation error (fail-closed): {me_err}"}
+                    finally:
+                        if os.path.exists(temp_file):
+                            os.remove(temp_file)
 
         elif tool_name == "NotebookEdit":
             path = tool_input.get("notebook_path", "")
             allowed, msg = engine.check_action("write_file", path)
             if not allowed:
                 decision = {"decision": "deny", "reason": msg}
+            else:
+                # Predictive validation: validate the incoming cell source (best-effort — a notebook cell
+                # is not a full file, so this runs the configured validators against the new source)
+                new_source = tool_input.get("new_source", "")
+                if new_source:
+                    temp_file = os.path.join(project_dir, f".claude_nbedit_temp_{os.path.basename(path)}.json")
+                    try:
+                        with open(temp_file, "w") as f:
+                            f.write(new_source)
+                        valid, val_msg = run_validators(engine, temp_file, project_dir)
+                        if not valid:
+                            decision = {"decision": "deny", "reason": f"Validator Failure on NotebookEdit: {val_msg}"}
+                    except Exception as nb_err:
+                        decision = {"decision": "deny", "reason": f"NotebookEdit validation error (fail-closed): {nb_err}"}
+                    finally:
+                        if os.path.exists(temp_file):
+                            os.remove(temp_file)
 
         elif tool_name == "Read":
             path = tool_input.get("file_path", "")
@@ -133,6 +171,10 @@ def run_validators(engine, target_path, project_dir):
             subprocess.run(cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
             return False, f"{e.stderr or e.stdout}".strip()
+        except Exception as e:
+            # A validator that crashes (bad interpreter, OSError, timeout, ...) must become a clean
+            # veto, not take down the whole hook.
+            return False, f"validator '{validator}' crashed (fail-closed): {e}"
     return True, "OK"
 
 if __name__ == "__main__":
